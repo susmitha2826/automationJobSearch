@@ -1,0 +1,31 @@
+# Node modules
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.*  # If you have .env.development etc.
+
+# Build output
+dist/
+build/
+
+# Dependency directories for frontend (if React inside same repo)
+frontend/node_modules/
+frontend/build/
+
+# IDE/editor junk
+.vscode/
+.idea/
+.DS_Store
+
+# Optional: TypeScript cache
+*.tsbuildinfo
+
+#
