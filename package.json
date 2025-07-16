@@ -16,6 +16,6 @@
     "dotenv": "^16.4.5",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.5",
-    "puppeteer": "^24.12.1"
+    "puppeteer": "^24.13.0"
   }
 }
