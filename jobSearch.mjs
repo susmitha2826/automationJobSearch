@@ -13,6 +13,8 @@ export async function runJobSearch() {
   const dateStr = new Date().toLocaleDateString('en-IN');
   const keywords = JSON.parse(fs.readFileSync('keywords.json'));
   let allResults = "";
+  const sentJobsFile = 'sentJobs.json';
+  let sentJobs = fs.existsSync(sentJobsFile) ? JSON.parse(fs.readFileSync(sentJobsFile)) : [];
 
   const browser = await puppeteer.launch({ headless: "new", args: ["--no-sandbox"] });
   const page = await browser.newPage();
@@ -22,76 +24,92 @@ export async function runJobSearch() {
   );
   // Naukri scraping
   try {
-    for (const keyword of keywords) {
-      const url = `https://www.naukri.com/${encodeURIComponent(keyword)}-jobs-in-india-0-to-3-years`;
-      // console.log("Scraping Naukri for:", keyword, url);
+for (const keyword of keywords) {
+  const url = `https://www.naukri.com/${encodeURIComponent(keyword)}-jobs-in-india-0-to-3-years`;
 
-      try {
-        await page.goto(url, { waitUntil: "domcontentloaded" });
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded" });
 
-        // const html = await page.content();
-        // fs.writeFileSync(`debug-naukri-${Date.now()}.html`, html);
+    await new Promise(r => setTimeout(r, 8000)); // wait for hydration
 
-        // console.log("Saved debug HTML for inspection.");
-        await new Promise(r => setTimeout(r, 8000)); // wait for React hydration
-
-        const jobs = await page.evaluate(() => {
-          const jobLinks = document.querySelectorAll("a.title");
-          const results = [];
-          for (let i = 0; i < Math.min(3, jobLinks.length); i++) {
-            const linkElem = jobLinks[i];
-            const title = linkElem.innerText.trim();
-            const link = linkElem.href;
-            if (title && link) {
-              results.push(`- ${title} → ${link}`);
-            }
-          }
-          return results;
-        });
-
-        if (jobs.length === 0) {
-          allResults += `\n🟢 ${keyword} — Naukri\n- No jobs found\n`;
-        } else {
-          allResults += `\n🟢 ${keyword} — Naukri\n${jobs.join("\n")}\n`;
+    const jobs = await page.evaluate(() => {
+      const jobLinks = document.querySelectorAll("a.title");
+      const results = [];
+      for (let i = 0; i < Math.min(5, jobLinks.length); i++) {
+        const linkElem = jobLinks[i];
+        const title = linkElem?.innerText?.trim();
+        const link = linkElem?.href;
+        if (title && link) {
+          results.push({ title, link });
         }
-
-      } catch (err) {
-        console.error(`Error scraping Naukri for ${keyword}:`, err.message);
-        allResults += `\n🟢 ${keyword} — Naukri\n- Error fetching jobs\n`;
       }
+      return results;
+    });
 
-      await new Promise(r => setTimeout(r, 2000)); // polite pause
+    const filteredJobs = jobs.filter(job => !sentJobs.includes(job.link));
+
+    if (filteredJobs.length === 0) {
+      allResults += `\n🟢 ${keyword} — Naukri\n- No new jobs found\n`;
+    } else {
+      for (const job of filteredJobs) {
+        allResults += `- ${job.title} → ${job.link}\n`;
+        sentJobs.push(job.link);
+      }
     }
+
+  } catch (err) {
+    console.error(`Error scraping Naukri for ${keyword}:`, err.message);
+    allResults += `\n🟢 ${keyword} — Naukri\n- Error fetching jobs\n`;
+  }
+
+  await new Promise(r => setTimeout(r, 2000)); // polite pause
+}
+
 
 
     // Linkedin scraping
-    for (const keyword of keywords) {
-      try {
-        await page.goto(
-          `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keyword)}&location=India&f_E=2`,
-          { waitUntil: "networkidle2" }
-        );
+for (const keyword of keywords) {
+  try {
+    await page.goto(
+      `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keyword)}&location=India&f_E=2`,
+      { waitUntil: "networkidle2" }
+    );
 
-        const linkedInJobs = await page.evaluate(() => {
-          const results = [];
-          const jobs = document.querySelectorAll(".base-search-card__title");
-          const links = document.querySelectorAll(".base-card__full-link");
-          for (let i = 0; i < Math.min(3, jobs.length); i++) {
-            const title = jobs[i]?.innerText.trim();
-            const link = links[i]?.href;
-            results.push(`- ${title} → ${link}`);
-          }
-          return results;
-        });
+    const linkedInJobs = await page.evaluate(() => {
+      const jobs = [];
+      const jobTitles = document.querySelectorAll(".base-search-card__title");
+      const jobLinks = document.querySelectorAll(".base-card__full-link");
 
-        allResults += `\n🔵 ${keyword} — LinkedIn\n${linkedInJobs.join("\n")}\n`;
-        await delay(2000);
-      } catch (error) {
-        console.error(`Error scraping LinkedIn for ${keyword}:`, error.message);
-        allResults += `\n🔵 ${keyword} — LinkedIn\n- Error fetching jobs\n`;
-        await delay(2000);
+      for (let i = 0; i < Math.min(5, jobTitles.length); i++) {
+        const title = jobTitles[i]?.innerText.trim();
+        const link = jobLinks[i]?.href;
+        if (title && link) {
+          jobs.push({ title, link });
+        }
+      }
+      return jobs;
+    });
+
+    const filteredJobs = linkedInJobs.filter(job => !sentJobs.includes(job.link));
+
+    if (filteredJobs.length === 0) {
+      allResults += `\n🔵 ${keyword} — LinkedIn\n- No new jobs found\n`;
+    } else {
+      for (const job of filteredJobs) {
+        allResults += `- ${job.title} → ${job.link}\n`;
+        sentJobs.push(job.link);
       }
     }
+
+    await delay(2000);
+
+  } catch (error) {
+    console.error(`Error scraping LinkedIn for ${keyword}:`, error.message);
+    allResults += `\n🔵 ${keyword} — LinkedIn\n- Error fetching jobs\n`;
+    await delay(2000);
+  }
+}
+
 
     // Google Search URLs
     for (const keyword of keywords) {
@@ -122,6 +140,8 @@ export async function runJobSearch() {
       });
 
       console.log("Email sent!");
+      fs.writeFileSync(sentJobsFile, JSON.stringify(sentJobs.slice(-5000), null, 2));
+
     } catch (err) {
       console.error("Error sending email:", err.message);
     }
@@ -135,7 +155,7 @@ export async function runJobSearch() {
 }
 
 // Schedule the job
-cron.schedule("40 20 * * *", runJobSearch, {
+cron.schedule("42 20 * * *", runJobSearch, {
   timezone: "Asia/Kolkata"
 });
 
